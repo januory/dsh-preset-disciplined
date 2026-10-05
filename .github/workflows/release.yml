@@ -1,0 +1,83 @@
+# 一键手动发布（workflow_dispatch，零输入）：
+#   版本号直接取自 package.json —— 发版前先在 main 上提交改好的 version。
+#   1. 校验包内容：cordis.patch.yml、locale、icon 必须真的进 tarball
+#   2. 校验 v<version> tag 尚未存在（防止重复发布）
+#   3. npm publish（provenance）
+#   4. 打 v<version> tag 并推送
+#   5. 用 --generate-notes 创建 GitHub Release
+#
+# 前提：仓库 Secrets 中配置 NPM_TOKEN（npm automation token 或带 publish 权限的 granular token）。
+
+name: release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write # push tag、创建 GitHub Release
+  id-token: write # npm publish provenance（npmjs 公开包）
+
+concurrency:
+  group: npm-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org/
+
+      # `files` 里漏一项，包照样能发出去但装上就是缺文件。发到 npm 之前先看一眼真实 tarball。
+      - name: Verify package contents
+        run: |
+          node -e '
+            const { execSync } = require("node:child_process")
+            const [meta] = JSON.parse(execSync("npm pack --dry-run --json", { encoding: "utf8" }))
+            const packed = new Set(meta.files.map(file => file.path))
+            const required = ["cordis.patch.yml", "package.json", "icon.svg", "locale/en.json", "locale/zh.json"]
+            const missing = required.filter(path => !packed.has(path))
+            if (missing.length > 0) {
+              console.error(`::error::tarball 缺少文件：${missing.join(", ")}`)
+              process.exit(1)
+            }
+            if (!meta.name.startsWith("@januory/")) {
+              console.error(`::error::包名 ${meta.name} 不在 @januory scope 下`)
+              process.exit(1)
+            }
+            console.log(`${meta.name}@${meta.version} 将发布 ${meta.files.length} 个文件`)
+          '
+
+      - name: Read version and guard duplicate release
+        id: version
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/v$version" > /dev/null; then
+            echo "::error::v$version 已发布过（tag 已存在）；请先在 package.json 中把 version 改成新版本并提交，再重新触发"
+            exit 1
+          fi
+
+      - name: Publish to npm
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create and push tag
+        run: |
+          git tag "v${{ steps.version.outputs.version }}"
+          git push origin "refs/tags/v${{ steps.version.outputs.version }}"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "v${{ steps.version.outputs.version }}" --generate-notes

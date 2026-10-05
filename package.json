@@ -1,0 +1,27 @@
+{
+  "name": "@januory/dsh-preset-disciplined",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "The Disciplined agent preset (严谨模式): the standard toolset with a think-first working agreement.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/januory/dsh-preset-disciplined.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}
