@@ -12,10 +12,12 @@
   },
   "exports": {
     "./locale/*.json": "./locale/*.json",
+    "./guidance": "./guidance.js",
     "./icon": "./icon.svg"
   },
   "files": [
     "cordis.patch.yml",
+    "guidance.js",
     "locale/*.json",
     "icon.svg"
   ],

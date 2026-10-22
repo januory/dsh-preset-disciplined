@@ -43,7 +43,7 @@ jobs:
             const { execSync } = require("node:child_process")
             const [meta] = JSON.parse(execSync("npm pack --dry-run --json", { encoding: "utf8" }))
             const packed = new Set(meta.files.map(file => file.path))
-            const required = ["cordis.patch.yml", "package.json", "icon.svg", "locale/en.json", "locale/zh.json"]
+            const required = ["cordis.patch.yml", "package.json", "guidance.js", "icon.svg", "locale/en.json", "locale/zh.json"]
             const missing = required.filter(path => !packed.has(path))
             if (missing.length > 0) {
               console.error(`::error::tarball 缺少文件：${missing.join(", ")}`)
