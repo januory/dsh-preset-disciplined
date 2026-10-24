@@ -49,11 +49,12 @@
                 - Don't refactor things that aren't broken.
                 - Match existing style, even if you'd do it differently.
                 - If you notice unrelated dead code, mention it - don't delete it.
-                - Do not add useless or leftover junk comments. Avoid verbose, redundant comments.
 
                 When your changes create orphans:
                 - Remove imports/variables/functions that YOUR changes made unused.
                 - Don't remove pre-existing dead code unless asked.
+
+                Comments: write one only when it explains a non-obvious why — a constraint, a tradeoff, a workaround — never what the code already says. One short line when it can be; a comment that needs several is one to shorten, not expand. Record no history in a comment: not what the code used to be, not what you changed. Mark it with the language's own comment syntax alone: no banner lines, separator runs, boxed headers, or emoji.
 
                 The test: every changed line should trace directly to the user's request.
 
