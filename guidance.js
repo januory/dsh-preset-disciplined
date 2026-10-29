@@ -7,10 +7,16 @@
  * prompt assembly, so an edit applies to the next request without a restart.
  * They are registered as a prompt section in the preset's agent scope.
  *
+ * A few of the same rules are also restated at the start of every turn. The
+ * system prompt only ever reaches a request at its head, where a long
+ * conversation buries it, so the short list below is what keeps the preset in
+ * play once the history grows.
+ *
  * Plain JavaScript with node built-ins only: a profile links this package from
  * a checkout, whose real path has no third-party packages to import.
  */
 
+import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -28,6 +34,9 @@ const STORE_FILE = 'config.json'
 
 /** Values used when the file or a field is missing. */
 const DEFAULTS = Object.freeze({ askLanguage: '中文', summaryMaxChars: 200 })
+
+/** Producer kind stamped on every per-turn reminder; the log and the UI label the row by it. */
+const REMINDER_KIND = 'preset-disciplined:rules'
 
 /** Last configuration complaint logged, so a broken file warns once, not per request. */
 let lastWarning = ''
@@ -117,6 +126,37 @@ Finish each turn with a short summary for the user and keep that final reply wit
 }
 
 /**
+ * Render the per-turn restatement. It repeats only the rules a long history
+ * most often drops, not the whole working agreement: the section above still
+ * carries the reasoning, and a second full copy would cost tokens while adding
+ * nothing a short list does not.
+ */
+function renderReminder({ askLanguage, summaryMaxChars }) {
+  return [
+    'Preset reminder (standing rules, not a new request):',
+    '- State assumptions and unknowns before acting; ask instead of guessing.',
+    '- Change only what the task requires; no drive-by refactors or extra features.',
+    '- Comments: only a non-obvious why — never what the code says or what it used to be.',
+    '- Verify with a test or command before claiming success.',
+    `- Questions in ${askLanguage}; final reply within ${summaryMaxChars} characters.`,
+  ].join('\n')
+}
+
+/**
+ * Build one reminder message. The loop appends it after the claimed prompt, so
+ * it lands next to the request; the producer kind keeps the row attributable
+ * in the log and the UI instead of passing for something the user typed.
+ */
+function reminderMessage(text) {
+  return {
+    id: randomUUID(),
+    role: 'user',
+    content: [{ type: 'text', text }],
+    source: { kind: REMINDER_KIND, form: 'notice', summary: 'preset rules' },
+  }
+}
+
+/**
  * Register the interaction rules for the mounting context's agent scope.
  * @param ctx - the row's context; the section registration is an effect of it.
  */
@@ -127,5 +167,19 @@ export function apply(ctx) {
     // Right after the persona prefix, before any tool guidance.
     order: ctx.systemPrompt.getSectionOrder('DEPLOYMENT_PERSONA_PREFIX') + 1,
     text: () => renderGuidance(readConfig(ctx)),
+  })
+  // The section above reaches the request only at its head. Restating the
+  // rules where the conversation actually ends is what carries them past a
+  // history long enough to bury the system prompt.
+  ctx.on('agent/pre-step', async ({ step, signal }, next) => {
+    const decision = await next()
+    if (decision.kind !== 'enter' || step !== 1 || signal.aborted) return decision
+    // A first step without a claimed prompt owns no request; a reminder alone
+    // would turn an empty wake into one.
+    if (decision.messages.length === 0) return decision
+    return {
+      ...decision,
+      messages: [...decision.messages, reminderMessage(renderReminder(readConfig(ctx)))],
+    }
   })
 }
